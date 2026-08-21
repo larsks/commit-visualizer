@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "commit-visualizer"
+version = "0.1.0"
+description = "Visualize git commit activity by hour of day"
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib",
+]
+
+[project.scripts]
+commit-viz = "commit_visualizer:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
