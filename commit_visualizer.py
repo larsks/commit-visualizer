@@ -51,6 +51,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help="Limit to commits by this author (can be specified multiple times)",
     )
+    parser.add_argument(
+        "--all-refs",
+        action="store_true",
+        default=False,
+        help="Include commits from all refs (default: only local branches)",
+    )
     return parser.parse_args(argv)
 
 
@@ -86,7 +92,10 @@ def clone_repo(repo: str, dest: Path, max_depth: int | None) -> Path:
 
 
 def get_commit_timestamps(
-    repo_path: Path, days: int, authors: list[str] | None = None
+    repo_path: Path,
+    days: int,
+    authors: list[str] | None = None,
+    all_refs: bool = False,
 ) -> list[tuple[datetime, int]]:
     after = datetime.now(timezone.utc) - timedelta(days=days)
     after_str = after.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -95,10 +104,13 @@ def get_commit_timestamps(
         "-C",
         str(repo_path),
         "log",
-        "--all",
         "--format=%aI",
         f"--after={after_str}",
     ]
+    if all_refs:
+        cmd.append("--all")
+    else:
+        cmd.append("--glob=refs/heads/*")
     for author in authors or []:
         cmd.extend(["--author", author])
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -218,7 +230,9 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Warning: {repo} does not exist, skipping.", file=sys.stderr)
                     continue
 
-            timestamps = get_commit_timestamps(repo_path, args.days, args.author)
+            timestamps = get_commit_timestamps(
+                repo_path, args.days, args.author, args.all_refs
+            )
             all_timestamps.extend(timestamps)
 
     if not all_timestamps:

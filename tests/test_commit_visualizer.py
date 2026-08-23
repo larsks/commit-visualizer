@@ -54,6 +54,14 @@ class TestParseArgs:
         args = parse_args(["--days", "7", "/repo"])
         assert args.author == []
 
+    def test_all_refs_default_false(self):
+        args = parse_args(["--days", "7", "/repo"])
+        assert args.all_refs is False
+
+    def test_all_refs_flag(self):
+        args = parse_args(["--days", "7", "--all-refs", "/repo"])
+        assert args.all_refs is True
+
 
 class TestCollectRepos:
     def test_from_positional_args(self):
@@ -316,6 +324,51 @@ class TestGetCommitTimestamps:
 
         nobody_timestamps = get_commit_timestamps(repo, days=7, authors=["Nobody"])
         assert len(nobody_timestamps) == 0
+
+    def test_excludes_non_branch_refs_by_default(self, tmp_path):
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        recent = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        repo = self._make_repo_with_commits(tmp_path, [recent])
+
+        subprocess.run(
+            ["git", "update-ref", "refs/stacks/main", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+        )
+        (repo / "extra.txt").write_text("extra")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "stack-only commit", "--date", recent],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+            env={
+                **subprocess.os.environ,
+                "GIT_AUTHOR_DATE": recent,
+                "GIT_COMMITTER_DATE": recent,
+            },
+        )
+        subprocess.run(
+            ["git", "update-ref", "refs/stacks/main", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+        )
+
+        default_timestamps = get_commit_timestamps(repo, days=7)
+        assert len(default_timestamps) == 1
+
+        all_timestamps = get_commit_timestamps(repo, days=7, all_refs=True)
+        assert len(all_timestamps) == 2
 
     def test_nonexistent_repo(self, tmp_path):
         timestamps = get_commit_timestamps(tmp_path / "nonexistent", days=7)
