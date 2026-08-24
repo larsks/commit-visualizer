@@ -62,6 +62,14 @@ class TestParseArgs:
         args = parse_args(["--days", "7", "--all-refs", "/repo"])
         assert args.all_refs is True
 
+    def test_max_commits_flag(self):
+        args = parse_args(["--days", "7", "--max-commits", "5", "/repo"])
+        assert args.max_commits == 5
+
+    def test_max_commits_default(self):
+        args = parse_args(["--days", "7", "/repo"])
+        assert args.max_commits is None
+
 
 class TestCollectRepos:
     def test_from_positional_args(self):
@@ -204,6 +212,24 @@ class TestBuildHeatmapData:
         grid, labels = build_heatmap_data([(dt_today, 9), (dt_yesterday, 9)], days=3)
         assert grid[9][-1] == 1
         assert grid[9][-2] == 1
+
+    def test_max_commits_ceiling(self):
+        from datetime import datetime, timezone
+
+        today = datetime.now(timezone.utc).date()
+        dt1 = datetime(today.year, today.month, today.day, 10, 0, tzinfo=timezone.utc)
+        dt2 = datetime(today.year, today.month, today.day, 10, 15, tzinfo=timezone.utc)
+        dt3 = datetime(today.year, today.month, today.day, 10, 30, tzinfo=timezone.utc)
+        
+        # Test without ceiling (should be 3)
+        grid_no_ceiling, _ = build_heatmap_data([(dt1, 10), (dt2, 10), (dt3, 10)], days=3)
+        assert grid_no_ceiling[10][-1] == 3
+
+        # Test with ceiling (should be capped at 2)
+        grid_with_ceiling, _ = build_heatmap_data(
+            [(dt1, 10), (dt2, 10), (dt3, 10)], days=3, max_commits=2
+        )
+        assert grid_with_ceiling[10][-1] == 2
 
     def test_date_labels_format(self):
         _, labels = build_heatmap_data([], days=5)

@@ -57,6 +57,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=False,
         help="Include commits from all refs (default: only local branches)",
     )
+    parser.add_argument(
+        "--max-commits",
+        type=int,
+        default=None,
+        help="Maximum commits to count per hour block",
+    )
     return parser.parse_args(argv)
 
 
@@ -134,7 +140,7 @@ def get_commit_timestamps(
 
 
 def build_heatmap_data(
-    all_timestamps: list[tuple[datetime, int]], days: int
+    all_timestamps: list[tuple[datetime, int]], days: int, max_commits: int | None = None
 ) -> tuple[list[list[int]], list[str]]:
     today = datetime.now(timezone.utc).date()
     start_date = today - timedelta(days=days - 1)
@@ -146,6 +152,8 @@ def build_heatmap_data(
         d = dt.date()
         if d in date_index:
             grid[hour][date_index[d]] += 1
+            if max_commits is not None and grid[hour][date_index[d]] > max_commits:
+                grid[hour][date_index[d]] = max_commits
 
     date_labels = [d.strftime("%Y-%m-%d") for d in date_list]
     return grid, date_labels
@@ -239,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         print("No commits found in the given time range.")
         return 0
 
-    grid, date_labels = build_heatmap_data(all_timestamps, args.days)
+    grid, date_labels = build_heatmap_data(all_timestamps, args.days, args.max_commits)
     render_chart(grid, date_labels, args.days, args.output)
     return 0
 
