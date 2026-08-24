@@ -11,6 +11,19 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
+def parse_geometry(value: str) -> tuple[int, int]:
+    try:
+        w, h = value.lower().split("x")
+        width, height = int(w), int(h)
+        if width <= 0 or height <= 0:
+            raise ValueError
+        return (width, height)
+    except (ValueError, AttributeError):
+        raise argparse.ArgumentTypeError(
+            f"Invalid geometry '{value}': expected WxH (e.g., 1200x800)"
+        )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Visualize git commit activity by hour of day.",
@@ -40,6 +53,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
+        "-o",
         type=Path,
         default=None,
         help="Save chart to file instead of displaying interactively",
@@ -62,6 +76,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Maximum commits to count per hour block",
+    )
+    parser.add_argument(
+        "-g",
+        "--geometry",
+        type=parse_geometry,
+        default=None,
+        help="Image dimensions as WxH in pixels (e.g., 1200x800)",
     )
     return parser.parse_args(argv)
 
@@ -140,7 +161,9 @@ def get_commit_timestamps(
 
 
 def build_heatmap_data(
-    all_timestamps: list[tuple[datetime, int]], days: int, max_commits: int | None = None
+    all_timestamps: list[tuple[datetime, int]],
+    days: int,
+    max_commits: int | None = None,
 ) -> tuple[list[list[int]], list[str]]:
     today = datetime.now(timezone.utc).date()
     start_date = today - timedelta(days=days - 1)
@@ -160,10 +183,20 @@ def build_heatmap_data(
 
 
 def render_chart(
-    grid: list[list[int]], date_labels: list[str], days: int, output: Path | None
+    grid: list[list[int]],
+    date_labels: list[str],
+    days: int,
+    output: Path | None,
+    geometry: tuple[int, int] | None = None,
 ) -> None:
-    fig_width = max(10, days * 0.3)
-    fig, ax = plt.subplots(figsize=(fig_width, 8))
+    dpi = 150
+    if geometry:
+        fig_width = geometry[0] / dpi
+        fig_height = geometry[1] / dpi
+    else:
+        fig_width = max(10, days * 0.3)
+        fig_height = 8
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
     im = ax.imshow(grid, aspect="auto", cmap="YlOrRd", interpolation="nearest")
     fig.colorbar(im, ax=ax, label="Commits", shrink=0.8)
@@ -199,7 +232,7 @@ def render_chart(
     fig.tight_layout()
 
     if output:
-        fig.savefig(output, dpi=150)
+        fig.savefig(output, dpi=dpi)
         print(f"Chart saved to {output}")
     else:
         plt.show()
@@ -248,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     grid, date_labels = build_heatmap_data(all_timestamps, args.days, args.max_commits)
-    render_chart(grid, date_labels, args.days, args.output)
+    render_chart(grid, date_labels, args.days, args.output, args.geometry)
     return 0
 
 

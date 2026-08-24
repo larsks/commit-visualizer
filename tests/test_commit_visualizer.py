@@ -14,6 +14,7 @@ from commit_visualizer import (
     is_remote,
     main,
     parse_args,
+    parse_geometry,
 )
 
 
@@ -69,6 +70,46 @@ class TestParseArgs:
     def test_max_commits_default(self):
         args = parse_args(["--days", "7", "/repo"])
         assert args.max_commits is None
+
+    def test_geometry_flag(self):
+        args = parse_args(["--days", "7", "-g", "1200x800", "/repo"])
+        assert args.geometry == (1200, 800)
+
+    def test_geometry_long_flag(self):
+        args = parse_args(["--days", "7", "--geometry", "800x600", "/repo"])
+        assert args.geometry == (800, 600)
+
+    def test_geometry_default(self):
+        args = parse_args(["--days", "7", "/repo"])
+        assert args.geometry is None
+
+
+class TestParseGeometry:
+    def test_valid_geometry(self):
+        assert parse_geometry("1200x800") == (1200, 800)
+
+    def test_valid_geometry_uppercase(self):
+        assert parse_geometry("1200X800") == (1200, 800)
+
+    def test_zero_width(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            parse_geometry("0x800")
+
+    def test_zero_height(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            parse_geometry("1200x0")
+
+    def test_negative(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            parse_geometry("-100x800")
+
+    def test_non_numeric(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            parse_geometry("abcxdef")
+
+    def test_missing_separator(self):
+        with pytest.raises(argparse.ArgumentTypeError):
+            parse_geometry("1200")
 
 
 class TestCollectRepos:
@@ -220,9 +261,11 @@ class TestBuildHeatmapData:
         dt1 = datetime(today.year, today.month, today.day, 10, 0, tzinfo=timezone.utc)
         dt2 = datetime(today.year, today.month, today.day, 10, 15, tzinfo=timezone.utc)
         dt3 = datetime(today.year, today.month, today.day, 10, 30, tzinfo=timezone.utc)
-        
+
         # Test without ceiling (should be 3)
-        grid_no_ceiling, _ = build_heatmap_data([(dt1, 10), (dt2, 10), (dt3, 10)], days=3)
+        grid_no_ceiling, _ = build_heatmap_data(
+            [(dt1, 10), (dt2, 10), (dt3, 10)], days=3
+        )
         assert grid_no_ceiling[10][-1] == 3
 
         # Test with ceiling (should be capped at 2)
@@ -482,6 +525,51 @@ class TestMainIntegration:
         assert result == 0
         captured = capsys.readouterr()
         assert "No commits found" in captured.out
+
+    def test_with_geometry(self, tmp_path):
+        from datetime import datetime, timedelta, timezone
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+        )
+        now = datetime.now(timezone.utc)
+        date = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        (repo / "f.txt").write_text("x")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "test", "--date", date],
+            cwd=repo,
+            capture_output=True,
+            check=True,
+            env={
+                **subprocess.os.environ,
+                "GIT_AUTHOR_DATE": date,
+                "GIT_COMMITTER_DATE": date,
+            },
+        )
+
+        output_file = tmp_path / "chart.png"
+        result = main(
+            ["--days", "7", "--output", str(output_file), "-g", "900x600", str(repo)]
+        )
+        assert result == 0
+        assert output_file.exists()
+        from PIL import Image
+
+        img = Image.open(output_file)
+        assert img.size == (900, 600)
 
     def test_with_local_repo(self, tmp_path, monkeypatch):
         from datetime import datetime, timedelta, timezone
